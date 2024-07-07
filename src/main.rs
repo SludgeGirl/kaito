@@ -4,6 +4,7 @@ use std::{
     any::Any, borrow::BorrowMut, env, fs::File, io::Write, ops::DerefMut, path::Path, sync::Arc,
 };
 
+use log::{error, info};
 use unicorn_engine::{
     unicorn_const::{Arch, Mode, Permission, SECOND_SCALE},
     RegisterX86, Unicorn,
@@ -15,8 +16,10 @@ use crate::msdos::MSDosFile;
 const MEM_SIZE: usize = 0x0020_0000;
 
 fn main() {
+    env_logger::init();
+
     let args: Vec<String> = env::args().collect();
-    println!("Loading file {}", args.get(1).expect(""));
+    info!("Loading file {}", args.get(1).expect(""));
     let path = Path::new(args.get(1).expect("No file provided"));
 
     let mut unicorn = unicorn_engine::Unicorn::new(Arch::X86, Mode::MODE_16)
@@ -34,24 +37,24 @@ fn main() {
         .expect("Failed to write code segment");
 
     emu.add_code_hook(0x0, MEM_SIZE as u64, |unicorn, address, _size| {
-        println!("");
         let mut buffer = [0; 4];
         let decoder = InstDecoder::default();
         unicorn
             .mem_read(address, &mut buffer)
             .expect("Failed to read code hook memory");
 
-        println!(
+        info!("----------------------");
+        info!(
             "Running code (address, buffer): {:X?} {:X?}",
             address, buffer
         );
 
         let instruction = decoder.decode_slice(&buffer);
         if instruction.is_err() {
-            println!("Invalid instruction: {:X?}", buffer);
+            error!("Invalid instruction: {:X?}", buffer);
         } else {
             let instruction = instruction.unwrap();
-            println!("{:X?}", instruction.to_string());
+            info!("{:X?}", instruction.to_string());
 
             let mut i = 0;
             while instruction.operand_present(i) {
@@ -81,7 +84,7 @@ fn main() {
 
                 if register.is_ok() {
                     let register = register.unwrap();
-                    println!(
+                    info!(
                         "Register {}: {:X?}",
                         instruction.operand(i).to_string().as_str(),
                         unicorn.reg_read(register).unwrap(),
@@ -96,7 +99,7 @@ fn main() {
     mem_dump(emu, "mem_dump");
 
     let prog_start = (file.cs << 4) + file.ip;
-    println!("Starting program at: {:X?}", prog_start);
+    info!("Starting program at: {:X?}", prog_start);
     let result = emu.emu_start(prog_start, MEM_SIZE as u64, 30 * SECOND_SCALE, 0);
     let reg_value = emu.reg_read(RegisterX86::IP).unwrap();
 
@@ -104,7 +107,7 @@ fn main() {
 
     let mut buffer = [0; 20];
     emu.mem_read(0x126D2_u64, &mut buffer).expect("");
-    println!("Program start {:X?} Until: {:X?}", buffer, MEM_SIZE);
+    info!("Program start {:X?} Until: {:X?}", buffer, MEM_SIZE);
 }
 
 fn add_standard_interrupts(unicorn: &mut Unicorn<'_, ()>) {
@@ -112,14 +115,18 @@ fn add_standard_interrupts(unicorn: &mut Unicorn<'_, ()>) {
         .add_intr_hook(|u, i| {
             // Based off: https://stanislavs.org/helppc/int_21-4.html
             let ah = u.reg_read(RegisterX86::AH).unwrap();
-            println!("INT: {:X?} AH: {:X?} PC: {}", i, ah, u.pc_read().unwrap());
+            info!("INT: {:X?} AH: {:X?} PC: {}", i, ah, u.pc_read().unwrap());
             match i {
                 0x21 => {
                     match ah {
+                        0x30 => {
+                            u.reg_write(RegisterX86::AL, 2).unwrap();
+                            u.reg_write(RegisterX86::AH, 0).unwrap();
+                        }
                         0x40 => {
                             let bx = u.reg_read(RegisterX86::BX).unwrap();
                             let cx = u.reg_read(RegisterX86::CX).unwrap();
-                            println!(
+                            info!(
                                 "Interrupt 0x21 - 0x40 handle: {} byte count: {}",
                                 bx,
                                 u.reg_read(RegisterX86::CX).unwrap()
@@ -168,7 +175,6 @@ fn add_standard_interrupts(unicorn: &mut Unicorn<'_, ()>) {
                                             _ => "`",
                                         });
                                     }
-                                    // println!("{:X?}", buffer);
                                     println!("{:?}", full_string);
                                 }
                                 _ => {}
@@ -185,7 +191,7 @@ fn add_standard_interrupts(unicorn: &mut Unicorn<'_, ()>) {
                         } // INT 21,4 - Auxiliary Output
                         0x4C => {
                             let exit_code = u.reg_read(RegisterX86::AL).unwrap();
-                            println!(
+                            error!(
                                 "Exiting from interrupt 21 - 4C {:X?} {}",
                                 exit_code, exit_code
                             );
@@ -211,7 +217,7 @@ fn add_standard_interrupts(unicorn: &mut Unicorn<'_, ()>) {
 }
 
 fn mem_dump(unicorn: &mut Unicorn<'_, ()>, path: &str) {
-    println!("Dumping memory to {}", path);
+    info!("Dumping memory to {}", path);
     let mut fh = File::create(path).expect("Failed to open memdump file");
     let mut offset: u64 = 0;
     while offset < MEM_SIZE as u64 {

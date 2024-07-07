@@ -7,5 +7,7 @@ edition = "2021"
 
 [dependencies]
 byteorder = "1.5.0"
+env_logger = "0.11.3"
+log = "0.4.22"
 unicorn-engine = { version = "2.0.1", features = ["dynamic_linkage"] }
 yaxpeax-x86 = "2.0.0"

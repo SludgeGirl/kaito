@@ -1,6 +1,7 @@
 use std::{fs::File, io::Read, path::Path};
 
 use byteorder::{ByteOrder, LittleEndian};
+use log::info;
 use unicorn_engine::{RegisterX86, Unicorn};
 
 pub struct MSDosFile {
@@ -19,7 +20,7 @@ impl MSDosFile {
         let header = MSDosHeader::load_from_buf(&buffer);
         // HACK: discard the first 512. This is the header size for the test file
         buffer.drain(0..512);
-        println!("{:X?}", header);
+        info!("{:X?}", header);
 
         unicorn
             .reg_write(
