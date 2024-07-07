@@ -4,7 +4,7 @@ use std::{
     any::Any, borrow::BorrowMut, env, fs::File, io::Write, ops::DerefMut, path::Path, sync::Arc,
 };
 
-use log::{error, info};
+use log::{debug, error, info};
 use unicorn_engine::{
     unicorn_const::{Arch, Mode, Permission, SECOND_SCALE},
     RegisterX86, Unicorn,
@@ -143,39 +143,9 @@ fn add_standard_interrupts(unicorn: &mut Unicorn<'_, ()>) {
                                         .expect("");
                                     let mut full_string = String::new();
                                     for c in buffer.iter() {
-                                        full_string.push_str(match c {
-                                            0x20 => " ",
-                                            0x50 => "P",
-                                            0x61 => "a",
-                                            0x62 => "b",
-                                            0x63 => "c",
-                                            0x64 => "d",
-                                            0x65 => "e",
-                                            0x66 => "f",
-                                            0x67 => "g",
-                                            0x68 => "h",
-                                            0x69 => "i",
-                                            0x6a => "j",
-                                            0x6b => "k",
-                                            0x6c => "l",
-                                            0x6d => "m",
-                                            0x6e => "n",
-                                            0x6f => "o",
-                                            0x70 => "p",
-                                            0x71 => "q",
-                                            0x72 => "r",
-                                            0x73 => "s",
-                                            0x74 => "t",
-                                            0x75 => "u",
-                                            0x76 => "v",
-                                            0x77 => "w",
-                                            0x78 => "x",
-                                            0x79 => "y",
-                                            0x7a => "z",
-                                            _ => "`",
-                                        });
+                                        full_string.push(*c as char);
                                     }
-                                    println!("{:?}", full_string);
+                                    println!("{}", full_string);
                                 }
                                 _ => {}
                             }
@@ -217,7 +187,7 @@ fn add_standard_interrupts(unicorn: &mut Unicorn<'_, ()>) {
 }
 
 fn mem_dump(unicorn: &mut Unicorn<'_, ()>, path: &str) {
-    info!("Dumping memory to {}", path);
+    debug!("Dumping memory to {}", path);
     let mut fh = File::create(path).expect("Failed to open memdump file");
     let mut offset: u64 = 0;
     while offset < MEM_SIZE as u64 {
