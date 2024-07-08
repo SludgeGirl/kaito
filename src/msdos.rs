@@ -1,23 +1,23 @@
-use std::{fs::File, io::Read, path::Path};
+use std::{io::Read, path::Path};
 
 use byteorder::{ByteOrder, LittleEndian};
 use log::info;
 use unicorn_engine::{RegisterX86, Unicorn};
 
-pub struct MSDosFile {
-    pub header: MSDosHeader,
+pub struct File {
+    pub header: Header,
     pub data: Vec<u8>,
     pub ip: u64,
     pub cs: u64,
 }
 
-impl MSDosFile {
+impl File {
     pub fn load_file(unicorn: &mut Unicorn<'_, ()>, path: &Path) -> Self {
-        let mut file = File::open(path).expect("Failed to open file");
+        let mut file = std::fs::File::open(path).expect("Failed to open file");
         let mut buffer: Vec<u8> = vec![];
         file.read_to_end(&mut buffer).expect("Failed to read file");
 
-        let header = MSDosHeader::load_from_buf(&buffer);
+        let header = Header::load_from_buf(&buffer);
         // HACK: discard the first 512. This is the header size for the test file
         buffer.drain(0..512);
         info!("{:X?}", header);
@@ -57,7 +57,7 @@ impl MSDosFile {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct MSDosHeader {
+pub struct Header {
     signature: [u8; 2],
     extra_bytes: [u8; 2],
     pages: [u8; 2],
@@ -74,7 +74,7 @@ pub struct MSDosHeader {
     overlay: [u8; 2],
 }
 
-impl MSDosHeader {
+impl Header {
     pub fn load_from_buf(buf: &[u8]) -> Self {
         Self {
             signature: [buf[0], buf[1]],
@@ -97,8 +97,8 @@ impl MSDosHeader {
     pub fn get_data_from_buffer(&self) -> &[u8] {
         unsafe {
             ::core::slice::from_raw_parts(
-                (self as *const MSDosHeader) as *const u8,
-                ::core::mem::size_of::<MSDosHeader>(),
+                (self as *const Header) as *const u8,
+                ::core::mem::size_of::<Header>(),
             )
         }
     }
@@ -106,7 +106,7 @@ impl MSDosHeader {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct MSDosRelocation {
+pub struct Relocation {
     offset: [u8; 2],
     segment: [u8; 2],
 }

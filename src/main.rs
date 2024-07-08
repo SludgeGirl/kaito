@@ -11,7 +11,7 @@ use unicorn_engine::{
 };
 use yaxpeax_x86::real_mode::InstDecoder;
 
-use crate::msdos::MSDosFile;
+use crate::msdos::File as MSDosFile;
 
 const MEM_SIZE: usize = 0x0020_0000;
 
