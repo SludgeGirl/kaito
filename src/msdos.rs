@@ -110,3 +110,57 @@ pub struct Relocation {
     offset: [u8; 2],
     segment: [u8; 2],
 }
+
+#[repr(C)]
+#[derive(Debug)]
+// https://www.stanislavs.org/helppc/program_segment_prefix.html
+pub struct PSP {
+    // Usually set to INT 0x20 (0xcd20) prog terminate
+    exit: [u8; 2],
+    // "Segment of the first byte beyond the memory allocated to the program"
+    // Yeah that wording sucks. Basically the segment alloc ends
+    // So if we've alloc'd 0x0 -> 0x2000 it'd be 0x2001 /probably/
+    alloc_end: [u8; 2],
+    resv: [u8; 2],
+    // Far call instruction to MSDos function dispatcher
+    call_disp: [u8; 5],
+    // .COM programs bytes available in segment (CP/M)
+    com_bytes: [u8; 2],
+    // Terminate address used by INT 22, we need to jump to this addr on exit
+    // This forces a child program to return to it's parent program
+    term_addr: [u8; 4],
+    // The Ctrl-Break exit address, a location of a subroutine for us to run
+    // when we encounter a Ctrl-Break
+    ctrl_break_addr: [u8; 4],
+    // Similar to the above. If we critically error, run the routine here
+    crit_err_addr: [u8; 4],
+    // Parent process's segment address
+    parent_addr: [u8; 2],
+    // File handle array for the process. It's completely undocumented for 2.x+
+    // /probably/ not in use for our case
+    file_handle_array: [u8; 20],
+    // Segment address of the environment, or zero
+    env_segment_addr: [u8; 2],
+    // SS:SP of the last program that called INT 0x21,0
+    last_exit_addr: [u8; 4],
+    // File handle array size
+    file_handle_size: [u8; 2],
+    // File handle array pointer
+    file_handle_addr: [u8; 4],
+    // Pointer to previous PSP
+    prev_psp: [u8; 4],
+    resv1: [u8; 20],
+    // Dos function dispatcher, but not the one we've already referenced?
+    // Gods know's what this one is, or why it's 3 bytes
+    function_dispatcher: [u8; 3],
+    resv2: [u8; 9],
+    // Unopened fcb?
+    // https://www.stanislavs.org/helppc/fcb.html
+    fcb: [u8; 36],
+    // Overlays section of fcb
+    fcb_overlays: [u8; 20],
+    // count of characters in command tail, all bytes following command name
+    command_tail_count: [u8; 1],
+    // Every byte following the program name
+    command_tail: [u8; 127],
+}
