@@ -13,8 +13,6 @@ use yaxpeax_x86::real_mode::InstDecoder;
 
 use crate::msdos::File as MSDosFile;
 
-const MEM_SIZE: usize = 0x0020_0000;
-
 fn main() {
     env_logger::init();
 
@@ -30,31 +28,26 @@ fn main() {
 
     let file = MSDosFile::load_file(emu, path);
 
-    emu.mem_map(0x0, MEM_SIZE, Permission::ALL)
-        .expect("failed to map code page");
+    mem_dump(emu, "mem_init", file.alloc);
 
-    emu.mem_write(0x0_u64, &file.data)
-        .expect("Failed to write code segment");
-
-    emu.add_code_hook(0x0, MEM_SIZE as u64, |unicorn, address, _size| {
-        let mut buffer = [0; 4];
+    emu.add_code_hook(0x0, file.alloc as u64, |unicorn, address, size| {
         let decoder = InstDecoder::default();
-        unicorn
-            .mem_read(address, &mut buffer)
+        let machine_code = unicorn
+            .mem_read_as_vec(address, size as usize)
             .expect("Failed to read code hook memory");
 
         info!("----------------------");
-        info!(
-            "Running code (address, buffer): {:X?} {:X?}",
-            address, buffer
-        );
 
-        let instruction = decoder.decode_slice(&buffer);
+        let instruction = decoder.decode_slice(&machine_code);
         if instruction.is_err() {
-            error!("Invalid instruction: {:X?}", buffer);
+            error!("Invalid instruction: {:X?}", machine_code);
         } else {
             let instruction = instruction.unwrap();
-            info!("{:X?}", instruction.to_string());
+            info!(
+                "Running code (address, buffer): {:X?} {:X?}",
+                address, machine_code
+            );
+            info!("{} {:X?}", instruction.to_string(), instruction.opcode());
 
             let mut i = 0;
             while instruction.operand_present(i) {
@@ -96,18 +89,34 @@ fn main() {
     })
     .expect("Failed to add code hook");
 
-    mem_dump(emu, "mem_dump");
-
     let prog_start = (file.cs << 4) + file.ip;
     info!("Starting program at: {:X?}", prog_start);
-    let result = emu.emu_start(prog_start, MEM_SIZE as u64, 30 * SECOND_SCALE, 0);
+    emu.reg_write(RegisterX86::IP, 0).unwrap();
+    let result = emu.emu_start(prog_start, file.alloc, 30 * SECOND_SCALE, 0);
     let reg_value = emu.reg_read(RegisterX86::IP).unwrap();
 
-    println!("Got result {:?} {}", result.unwrap(), reg_value);
+    if result.is_err() {
+        error!("Got result {:?} {:X?} {:X?}", result, reg_value, file.alloc);
+        error!(
+            "es {:X?} di {:X?} ds {:X?} si {:X?}",
+            emu.reg_read(RegisterX86::ES).unwrap(),
+            emu.reg_read(RegisterX86::DI).unwrap(),
+            emu.reg_read(RegisterX86::DS).unwrap(),
+            emu.reg_read(RegisterX86::SI).unwrap(),
+        );
+    } else {
+        println!(
+            "Got result {:?} {:X?} {:X?}",
+            result.unwrap(),
+            reg_value,
+            file.alloc
+        );
+    }
 
+    mem_dump(emu, "mem_dump", file.alloc);
     let mut buffer = [0; 20];
-    emu.mem_read(0x126D2_u64, &mut buffer).expect("");
-    info!("Program start {:X?} Until: {:X?}", buffer, MEM_SIZE);
+    emu.mem_read(prog_start, &mut buffer).expect("");
+    info!("Program start {:X?} Until: {:X?}", buffer, file.alloc);
 }
 
 fn add_standard_interrupts(unicorn: &mut Unicorn<'_, ()>) {
@@ -186,17 +195,17 @@ fn add_standard_interrupts(unicorn: &mut Unicorn<'_, ()>) {
         .expect("failed to add interrupt hook");
 }
 
-fn mem_dump(unicorn: &mut Unicorn<'_, ()>, path: &str) {
+fn mem_dump(unicorn: &mut Unicorn<'_, ()>, path: &str, memory_size: u64) {
     debug!("Dumping memory to {}", path);
     let mut fh = File::create(path).expect("Failed to open memdump file");
-    let mut offset: u64 = 0;
-    while offset < MEM_SIZE as u64 {
-        let mut buffer: [u8; 128] = [0; 128];
+    let mut offset: u64 = 0x0;
+    while offset < memory_size as u64 {
+        let mut buffer: [u8; 4096] = [0; 4096];
         unicorn
             .mem_read(offset, &mut buffer)
             .expect("Failed to dump memory");
         fh.write_all(&buffer)
             .expect("Failed to dump memory to file");
-        offset += 128;
+        offset += 4096;
     }
 }
