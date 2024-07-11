@@ -1,12 +1,10 @@
 mod msdos;
 
-use std::{
-    any::Any, borrow::BorrowMut, env, fs::File, io::Write, ops::DerefMut, path::Path, sync::Arc,
-};
+use std::{borrow::BorrowMut, env, fs::File, io::Write, path::Path};
 
 use log::{debug, error, info};
 use unicorn_engine::{
-    unicorn_const::{Arch, Mode, Permission, SECOND_SCALE},
+    unicorn_const::{Arch, Mode, SECOND_SCALE},
     RegisterX86, Unicorn,
 };
 use yaxpeax_x86::real_mode::InstDecoder;
@@ -161,11 +159,8 @@ fn add_standard_interrupts(unicorn: &mut Unicorn<'_, ()>) {
 
                             u.reg_write(RegisterX86::AX, cx)
                                 .expect("Failed 0x21 - 0x40 call");
-                            u.reg_write(
-                                RegisterX86::FLAGS,
-                                u.reg_read(RegisterX86::FLAGS).unwrap() & 0b0,
-                            )
-                            .expect("Failed to set register flags");
+                            u.reg_write(RegisterX86::FLAGS, 0)
+                                .expect("Failed to set register flags");
                             // u.emu_stop();
                         } // INT 21,4 - Auxiliary Output
                         0x4C => {
@@ -199,7 +194,7 @@ fn mem_dump(unicorn: &mut Unicorn<'_, ()>, path: &str, memory_size: u64) {
     debug!("Dumping memory to {}", path);
     let mut fh = File::create(path).expect("Failed to open memdump file");
     let mut offset: u64 = 0x0;
-    while offset < memory_size as u64 {
+    while offset < memory_size {
         let mut buffer: [u8; 4096] = [0; 4096];
         unicorn
             .mem_read(offset, &mut buffer)
