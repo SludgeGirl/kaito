@@ -1,13 +1,13 @@
 mod msdos;
 
-use std::{borrow::BorrowMut, env, fs::File, io::Write, path::Path};
+use std::{borrow::BorrowMut, env, fs::File, io::{stdin, Write}, path::Path};
 
 use log::{debug, error, info};
 use unicorn_engine::{
     unicorn_const::{Arch, Mode, SECOND_SCALE},
     RegisterX86, Unicorn,
 };
-use yaxpeax_x86::real_mode::InstDecoder;
+use yaxpeax_x86::real_mode::{InstDecoder, Opcode};
 
 use crate::msdos::File as MSDosFile;
 
@@ -47,6 +47,18 @@ fn main() {
             );
             info!("{} {:X?}", instruction.to_string(), instruction.opcode());
 
+            if instruction.opcode() == Opcode::MOVS {
+                let es = unicorn.reg_read(RegisterX86::ES).unwrap();
+                info!("ES: {:X?}", es);
+                let di = unicorn.reg_read(RegisterX86::DI).unwrap();
+                info!("DI: {:X?}", di);
+                let ds = unicorn.reg_read(RegisterX86::DS).unwrap();
+                info!("DS: {:X?}", ds);
+                let si = unicorn.reg_read(RegisterX86::SI).unwrap();
+                info!("SI: {:X?}", si);
+                // std::process::exit(0);
+            }
+
             let mut i = 0;
             while instruction.operand_present(i) {
                 let register = match instruction.operand(i).to_string().as_str() {
@@ -84,6 +96,8 @@ fn main() {
                 i += 1;
             }
         }
+
+        wait_for_user_input();
     })
     .expect("Failed to add code hook");
 
@@ -96,12 +110,25 @@ fn main() {
     if result.is_err() {
         error!("Got result {:?} {:X?} {:X?}", result, reg_value, file.alloc);
         error!(
-            "es {:X?} di {:X?} ds {:X?} si {:X?}",
-            emu.reg_read(RegisterX86::ES).unwrap(),
-            emu.reg_read(RegisterX86::DI).unwrap(),
-            emu.reg_read(RegisterX86::DS).unwrap(),
-            emu.reg_read(RegisterX86::SI).unwrap(),
+            "AX: {:X?} BX: {:X?} CS: {:X?}",
+            emu.reg_read(RegisterX86::AX).unwrap(),
+            emu.reg_read(RegisterX86::BX).unwrap(),
+            emu.reg_read(RegisterX86::CX).unwrap(),
         );
+        error!(
+            "SI: {:X?} DI: {:X?} BP {:X?} SP: {:X?}",
+            emu.reg_read(RegisterX86::SI).unwrap(),
+            emu.reg_read(RegisterX86::DI).unwrap(),
+            emu.reg_read(RegisterX86::BP).unwrap(),
+            emu.reg_read(RegisterX86::SP).unwrap(),
+        );
+        error!(
+            "CS: {:X?} DS: {:X?} ES: {:X?} SS: {:X?}",
+            emu.reg_read(RegisterX86::CS).unwrap(),
+            emu.reg_read(RegisterX86::DS).unwrap(),
+            emu.reg_read(RegisterX86::ES).unwrap(),
+            emu.reg_read(RegisterX86::SS).unwrap(),
+        )
     } else {
         println!(
             "Got result {:?} {:X?} {:X?}",
@@ -188,6 +215,11 @@ fn add_standard_interrupts(unicorn: &mut Unicorn<'_, ()>) {
             };
         })
         .expect("failed to add interrupt hook");
+}
+
+fn wait_for_user_input() {
+    let mut buff = String::new();
+    stdin().read_line(&mut buff).expect("Failed to read line");
 }
 
 fn mem_dump(unicorn: &mut Unicorn<'_, ()>, path: &str, memory_size: u64) {

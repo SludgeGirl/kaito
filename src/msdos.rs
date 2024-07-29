@@ -24,9 +24,12 @@ impl File {
         buffer.drain(0..header_size);
 
         let bound: u64 = 4096;
+        let psp_size = std::mem::size_of::<PSP>();
+        info!("PSP Size {}", psp_size);
+        // std::process::exit(0);
         let needed_alloc: u64 = LittleEndian::read_u16(&header.max_allocation) as u64 * 16
             + buffer.len() as u64
-            + std::mem::size_of::<PSP>() as u64;
+            + psp_size as u64;
         let alloc = (((needed_alloc + bound - 1) / bound) * bound) as usize;
 
         unicorn
@@ -35,7 +38,43 @@ impl File {
 
         info!("Allocating {:X?} for program", alloc);
 
-        let ip = LittleEndian::read_u16(&header.initial_ip) as u64;
+        let psp = PSP {
+            exit: 0x20,
+            alloc_end: (alloc + 1) as u16, // Wrong
+            resv: 0,
+            call_disp: [0xFF; 5], // Wrong
+            // com_bytes: 0,
+            term_addr: 0xFFFF_FFFF, // Lets go to out of bounds so we can fail hard
+            ctrl_break_addr: 0x9999_9999,
+            crit_err_addr: 0x9999_9999,
+            parent_addr: 0x0,
+            file_handle_array: [0; 20],
+            env_segment_addr: 0x0,
+            last_exit_addr: 0x9999_9999,
+            file_handle_size: 0x0,
+            file_handle_addr: 0x9999_9999,
+            prev_psp: 0x0,
+            resv1: [0; 4],
+            resv2: [0; 14],
+            dos_ver: 2,
+            far_call_dos: [0xFF; 3],
+            resv3: [0; 9],
+            fcb: [0; 16],
+            fcb2: [0; 20],
+            bytes_cmd: 0,
+            cmd_tail: [0; 127],
+        };
+        let psp_addr = 0x0;
+        let psp_bytes = unsafe { any_as_u8_slice(&psp) };
+        unicorn
+            .mem_write(psp_addr, psp_bytes)
+            .expect("Failed to write psp");
+
+        unicorn
+            .mem_write(psp_size as u64, &buffer)
+            .expect("Failed to write code segment");
+
+        let ip = (LittleEndian::read_u16(&header.initial_ip) + psp_size as u16) as u64;
         unicorn
             .reg_write(RegisterX86::IP, ip)
             .expect("Failed to setup ip register");
@@ -58,40 +97,6 @@ impl File {
                 LittleEndian::read_u16(&header.initial_sp).into(),
             )
             .expect("Failed to setup SP register");
-
-        unicorn
-            .mem_write(0x0, &buffer)
-            .expect("Failed to write code segment");
-
-        let psp = PSP {
-            exit: 0x20,
-            alloc_end: (alloc + 1) as u16, // Wrong
-            resv: 0,
-            call_disp: [0xFF; 5], // Wrong
-            com_bytes: 0,
-            term_addr: 0x9999_9999, // Lets go to out of bounds so we can fail hard
-            ctrl_break_addr: 0x9999_9999,
-            crit_err_addr: 0x9999_9999,
-            parent_addr: 0x0,
-            file_handle_array: [0; 20],
-            env_segment_addr: 0x0,
-            last_exit_addr: 0x9999_9999,
-            file_handle_size: 0x0,
-            file_handle_addr: 0x9999_9999,
-            prev_psp: 0x0,
-            resv1: [0; 20],
-            function_dispatcher: [0; 3],
-            resv2: [0; 9],
-            fcb: [0; 36],
-            fcb_overlays: [0; 20],
-            command_tail_count: 0x0,
-            command_tail: [0; 127],
-        };
-        let psp_addr = (((buffer.len() >> 4) + 1) << 4).try_into().unwrap();
-        let psp_bytes = unsafe { any_as_u8_slice(&psp) };
-        unicorn
-            .mem_write(psp_addr, psp_bytes)
-            .expect("Failed to write psp");
 
         let psp_segment = psp_addr >> 4;
         unicorn
@@ -167,9 +172,10 @@ pub struct Relocation {
     segment: [u8; 2],
 }
 
-#[repr(C)]
-#[derive(Debug)]
 // https://www.stanislavs.org/helppc/program_segment_prefix.html
+#[repr(C)]
+#[repr(packed)]
+#[derive(Debug)]
 pub struct PSP {
     /// Usually set to INT 0x20 (0xcd20) prog terminate
     exit: u16,
@@ -177,11 +183,11 @@ pub struct PSP {
     /// Yeah that wording sucks. Basically the segment alloc ends
     /// So if we've alloc'd 0x0 -> 0x2000 it'd be 0x2001 /probably/
     alloc_end: u16,
-    resv: u16,
+    resv: u8,
     /// Far call instruction to MSDos function dispatcher
     call_disp: [u8; 5],
     /// .COM programs bytes available in segment (CP/M)
-    com_bytes: u16,
+    // com_bytes: u32,
     /// Terminate address used by INT 22, we need to jump to this addr on exit
     /// This forces a child program to return to it's parent program
     term_addr: u32,
@@ -205,20 +211,15 @@ pub struct PSP {
     file_handle_addr: u32,
     /// Pointer to previous PSP
     prev_psp: u32,
-    resv1: [u8; 20],
-    /// Dos function dispatcher, but not the one we've already referenced?
-    /// Gods know's what this one is, or why it's 3 bytes
-    function_dispatcher: [u8; 3],
-    resv2: [u8; 9],
-    /// Unopened fcb?
-    /// https://www.stanislavs.org/helppc/fcb.html
-    fcb: [u8; 36],
-    /// Overlays section of fcb
-    fcb_overlays: [u8; 20],
-    /// count of characters in command tail, all bytes following command name
-    command_tail_count: u8,
-    /// Every byte following the program name
-    command_tail: [u8; 127],
+    resv1: [u8; 4],
+    dos_ver: u16,
+    resv2: [u8; 14],
+    far_call_dos: [u8; 3],
+    resv3: [u8; 9],
+    fcb: [u8; 16],
+    fcb2: [u8; 20],
+    bytes_cmd: u8,
+    cmd_tail: [u8; 127],
 }
 
 unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
