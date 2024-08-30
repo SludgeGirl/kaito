@@ -1,0 +1,15 @@
+[package]
+name = "kaito-backends"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+byteorder.workspace = true
+env_logger.workspace = true
+log.workspace = true
+unicorn-engine = { workspace = true, features = ["dynamic_linkage"] }
+yaxpeax-x86.workspace = true
+kaito-interfaces.workspace = true

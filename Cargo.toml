@@ -1,11 +1,23 @@
-[package]
-name = "kaito"
-version = "0.1.0"
+[workspace.package]
+version = "0.0.1"
+authors = ["Sludge <me@sludge.network>"]
+# TODO: Check rust-version
+rust-version = "1.74"
 edition = "2021"
+# TODO: Review this
+license = "MIT OR Apache-2.0"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[workspace]
+members = ["kaito", "kaito-backends", "kaito-interfaces"]
+resolver = "2"
 
-[dependencies]
+[workspace.dependencies]
+# In workspace
+kaito = { version = "0.0.1", path = "./kaito" }
+kaito-backends = { version = "0.0.1", path = "./kaito-backends" }
+kaito-interfaces = { version = "0.0.1", path = "./kaito-interfaces" }
+
+# External deps
 byteorder = "1.5.0"
 env_logger = "0.11.3"
 log = "0.4.22"
